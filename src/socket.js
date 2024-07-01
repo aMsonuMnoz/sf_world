@@ -1,19 +1,31 @@
-
+import { controls } from './game.js'
 export function setupSocket() {
   let counter = 0;
   const socket = io({
     auth: {
       serverOffset: 0
-    },
-    //enable retries
-    ackTimeout: 10000,
-    retries: 3,
+    }
   });
 
 
   const form = document.getElementById('form');
   const input = document.getElementById('input');
   const messages = document.getElementById('messages');
+  const okButton = document.getElementById('prompt-ok-button');
+  const promptInput = document.getElementById('prompt-input');
+  const modal = document.getElementById('custom-prompt');
+  const promptMessage = document.getElementById('prompt-message');
+
+
+  // screen name prompt submit
+  okButton.addEventListener('click', async () => {
+    if(promptInput.value){
+      const clientOffset = `${socket.id}-${counter++}`;
+      promptMessage.textContent = "Connecting..."
+      socket.emit('setScreenName', promptInput.value, clientOffset);
+    }
+  });
+
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -22,10 +34,39 @@ export function setupSocket() {
       const clientOffset = `${socket.id}-${counter++}`;
       socket.emit('chat message', input.value, clientOffset);
       input.value = '';
+      input.blur();
+      controls.lock();
     }
   });
 
 
+  document.addEventListener('keydown', (event) => {
+    if(modal.style.display === 'none'){
+      if((event.key === 't' || event.key === 'T') && (document.activeElement !== input)){
+        input.focus();
+        event.preventDefault();
+        controls.unlock();
+      }
+
+      if(event.key === 'Backspace'){
+        if(!input.value){
+          input.blur();
+          event.preventDefault();
+          controls.lock();
+        }
+      }
+    }
+  })
+
+
+  socket.on('screenNameSet', (response) => {
+    if(response){
+      modal.style.display = 'none';
+    }
+    else{
+      promptMessage.textContent = 'Error setting screen name, please try again'
+    }
+  });
 
 
 
@@ -33,8 +74,9 @@ export function setupSocket() {
     const item = document.createElement('li');
     item.textContent = msg;
     messages.appendChild(item);
-    window.scrollTo(0, document.body.scrollHeight);
+    messages.scrollTo(0, messages.scrollHeight);
     socket.auth.serverOffset = serverOffset;
+    console.log('why');
   });
 
   socket.on('connect', () => {
@@ -50,4 +92,9 @@ export function setupSocket() {
   function movePlayer(x, y) {
     socket.emit('movePlayer', { x, y });
   }
+
+
+  window.addEventListener('beforeunload', () => {
+    socket.emit('counter', counter);
+  });
 }

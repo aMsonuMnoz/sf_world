@@ -32,11 +32,29 @@ app.use(express.static('public'));
 
 let players = {};
 
+
+
+
 io.on('connection', async (socket) => {
-  console.log('a user connected: ', socket.id);
+  players[socket.id] = { screenName: null, clientOffset: null };
+
+  //Handle Screen Name set
+  socket.on('setScreenName', async (screenName, clientOffset, callback) => {
+    if(!screenName || Object.values(players).some(player => player.screenName === screenName)) {
+      io.emit('screenNameSet', false);
+    }
+    else{
+      players[socket.id].screenName = screenName;
+      const notification = `${screenName} joined the game.`
+      let result = await db.run('INSERT INTO messages (content, client_offset) VALUES (?, ?)', notification, clientOffset);
+      io.emit('chat message', notification, result.lastID);
+      socket.emit('screenNameSet', true);
+      console.log('a user connected: ', screenName, socket.id);
+    }
+  });
 
   //Handle Chat Messsage
-  socket.on('chat message', async (msg, clientOffset, callback) => {
+  socket.on('chat message', async (msg, clientOffset) => {
     let result;
     try {
       //store the messages in the database
@@ -44,7 +62,6 @@ io.on('connection', async (socket) => {
     } catch (e) {
       if (e.errno === 19 /* SQLITE_CONSTRAINT */ ){
         // the message was already inserted
-        callback();
       } else {
         // nothing to do, let client retry
       }
@@ -54,7 +71,6 @@ io.on('connection', async (socket) => {
     //include the offset with the message
     io.emit('chat message', msg, result.lastID);
     //acknowledge the event
-    callback();
   });
 
   if (!socket.recovered) {
@@ -72,7 +88,7 @@ io.on('connection', async (socket) => {
   }
   
   // Handle new player
-  socket.once('newPlayer', (player) => {
+  socket.once('newPlayer', async (player) => {
     players[socket.id] = player;
     io.emit('updatePlayers', players);
   });
@@ -86,11 +102,17 @@ io.on('connection', async (socket) => {
     }
   });
 
+
   // Handle player disconnect
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
+    if(players[socket.id].screenName){
+      const notification = `${players[socket.id].screenName} left the game.`
+      let result = await db.run('INSERT INTO messages (content, client_offset) VALUES (?, ?)', notification, null);
+      io.emit('chat message', notification, null)
+    }
+    console.log('user disconnected: ', players[socket.id].screenName, socket.id);
     delete players[socket.id];
     io.emit('updatePlayers', players);
-    console.log('user disconnected: ', socket.id);
   });
 });
 
