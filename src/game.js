@@ -64,7 +64,7 @@ export function init() {
             roughnessMap: floorARMTexture,
             metalnessMap: floorARMTexture,
             normalMap: floorNormalTexture,
-            wireframe: true
+            wireframe: false
         })
     );
     floor.rotation.x = - Math.PI/2;
@@ -127,7 +127,7 @@ export function init() {
     // Base camera
     camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 200);
     camera.position.x = 0;
-    camera.position.y = 1;
+    camera.position.y = 10;
     camera.position.z = 0;
     scene.add(camera);
 

@@ -11,15 +11,24 @@ moveDown = false;
 
 const velocity = new Vector3();
 const direction = new Vector3();
+const playerDirection = new Vector3();
 const playerRotation = new Vector3();
+const quaternion = new Quaternion();
+
+const raycaster = new Raycaster();
+raycaster.far = 2;
 
 const groundRaycaster = new Raycaster();
 groundRaycaster.ray.direction.set(0,-1,0);
+groundRaycaster.far = 5;
 
-const wallRaycaster = new Raycaster();
-wallRaycaster.ray.direction.set(0,0,1);
-
-let movementSpeed = 500;
+//Params ------------------
+const playerHeight = 1.5;
+const gravity = 1;
+const movementSpeed = 100;
+const damperFactor = 10;
+const jumpHeight = 1;
+//Params ------------------
 
 
 export default class Controls {
@@ -111,13 +120,14 @@ export default class Controls {
             }
         });
 
+
     }
 
     update (deltaTime) {
         if (this.controls.isLocked) {
-            velocity.x -= velocity.x * 10.0 * deltaTime;
-            velocity.y -= velocity.y * 10.0 * deltaTime;
-            velocity.z -= velocity.z * 10.0 * deltaTime;
+            velocity.x -= velocity.x * damperFactor * deltaTime;
+            velocity.y -= velocity.y * damperFactor * deltaTime;
+            velocity.z -= velocity.z * damperFactor * deltaTime;
             direction.z = Number(moveForward) - Number(moveBackward);
             direction.x = Number(moveRight) - Number(moveLeft);
             direction.y = Number(moveUp) - Number(moveDown);
@@ -127,56 +137,91 @@ export default class Controls {
             playerRotation.z = this.controls.getObject().rotation.z;
             playerRotation.y = this.controls.getObject().rotation.y;
 
-            const playerDirection = new Vector3(direction.x, direction.y, -direction.z);
+            playerDirection.x = direction.x;
+            playerDirection.y = direction.y;
+            playerDirection.z = -direction.z;
 
-            const quaternion = new Quaternion();
             quaternion.setFromEuler(new Euler(playerRotation.x, playerRotation.y, playerRotation.z));
             playerDirection.applyQuaternion(quaternion);
-            
-            
-
+ 
 
             if (moveForward || moveBackward) {
                 let potentialZ = velocity.z -= direction.z * movementSpeed * deltaTime;
-                if (!this.checkCollision(playerDirection)) {
+                this.updateXZRaycasters(playerDirection);
+                if (!this.checkCollision(raycaster)) {
                     velocity.z = potentialZ;
+                }
+                else{
+                    velocity.z = 0;
                 }
             }
             if (moveLeft || moveRight) {
                 let potentialX = velocity.x -= direction.x * movementSpeed * deltaTime;
-                if (!this.checkCollision(playerDirection)) {
+                this.updateXZRaycasters(playerDirection);
+                if (!this.checkCollision(raycaster)) {
                     velocity.x = potentialX;
                 }
-            }
-            if (moveUp || moveDown) {
-                let potentialY = velocity.y -= direction.y * movementSpeed * deltaTime;
-                if (!this.checkCollision(playerDirection)) {
-                    velocity.y = potentialY;
+                else{
+                    velocity.x = 0;
                 }
             }
+
+            this.checkGroundCollision();
+
+
+            // Fly Controls
+            // if (moveUp || moveDown) {
+            //     let potentialY = velocity.y -= direction.y * movementSpeed * deltaTime;
+            //     if (!this.checkCollision(playerDirection)) {
+            //         velocity.y = potentialY;
+            //     }
+            //     else{
+            //         velocity.y = 0;
+            //     }
+            // }
+
             this.controls.moveRight(-velocity.x * deltaTime);
             this.controls.moveForward(-velocity.z * deltaTime);
             this.controls.getObject().position.y -= velocity.y * deltaTime;
         }
     }
 
-    checkCollision(directionVector) {
-        const raycaster = new Raycaster();
-        raycaster.ray.origin.copy(this.controls.getObject().position);
-        raycaster.ray.origin.y += 1;
-        raycaster.ray.direction.copy(directionVector);
-        raycaster.ray.direction.y = 0;
-        raycaster.ray.direction.normalize();
-        raycaster.far = 5;
+    checkCollision(raycaster) {
 
         this.arrowHelper(raycaster);
         const intersections = raycaster.intersectObjects(this.collidables);
-        console.log(intersections);
         if (intersections.length > 0) {
             return true;
         }
         return false;
     }
+
+    checkGroundCollision() {
+        groundRaycaster.ray.origin.copy(this.controls.getObject().position);
+        groundRaycaster.ray.origin.y += 1;
+        const gIntersections = groundRaycaster.intersectObjects(this.collidables);
+        if (gIntersections.length > 0) {
+            const distanceToGround = gIntersections[0].distance;
+
+            if (distanceToGround < playerHeight) {
+                this.controls.getObject().position.y -= distanceToGround - playerHeight;
+            }
+            else if (distanceToGround > playerHeight) {
+                this.controls.getObject().position.y += playerHeight - distanceToGround;
+            }
+        }
+        else {
+            this.controls.getObject().position.y -= gravity;
+        }
+    }
+
+    updateXZRaycasters(directionVector) {
+        raycaster.ray.origin.copy(this.controls.getObject().position);
+        raycaster.ray.origin.y += 1;
+        raycaster.ray.direction.copy(directionVector);
+        raycaster.ray.direction.y = 0;
+    }
+
 
     arrowHelper(raycaster) {
             // The direction vector needs to be normalized for the ArrowHelper
