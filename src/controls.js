@@ -9,26 +9,32 @@ moveRight = false,
 moveUp = false,
 moveDown = false;
 
+let isJumping = false;
+let jumpStartTime = 0;
+
 const velocity = new Vector3();
 const direction = new Vector3();
 const playerDirection = new Vector3();
 const playerRotation = new Vector3();
 const quaternion = new Quaternion();
 
+
+
+//Params ------------------
+const playerHeight = 1.5;
+const gravity = 9.8;
+const movementSpeed = 50;
+const damperFactor = 10;
+const flyControlsEnabled = true; //Set to true to enable fly controls. 
+const jumpSpeed = 6;
+//Params ------------------
+
 const raycaster = new Raycaster();
 raycaster.far = 2;
 
 const groundRaycaster = new Raycaster();
 groundRaycaster.ray.direction.set(0,-1,0);
-groundRaycaster.far = 5;
-
-//Params ------------------
-const playerHeight = 1.5;
-const gravity = 1;
-const movementSpeed = 100;
-const damperFactor = 10;
-const jumpHeight = 1;
-//Params ------------------
+groundRaycaster.far = 1.6;
 
 
 export default class Controls {
@@ -53,6 +59,8 @@ export default class Controls {
             isLocked=false;
         })
     
+
+
     
         document.addEventListener('keydown', (event) =>{
             // if(event.key === 't' || event.key === 'T'){
@@ -85,11 +93,25 @@ export default class Controls {
                     moveRight = true;
                     break;
                 case 'Space':
-                    moveUp = true;
+                    if (!flyControlsEnabled){
+                        if (!isJumping) {
+                            jumpStartTime = performance.now();
+                            isJumping = true;
+                            velocity.y = jumpSpeed;
+                        }
+                    }
+                    else {
+                        console.log('flyControlsEnabled')
+                        moveUp = true;
+                        
+                    }
                     break;
                 case 'ShiftLeft':
-                    moveDown = true;
+                    if (flyControlsEnabled) {
+                        moveDown = true;
+                    }
                     break;
+
             }
         });
     
@@ -112,13 +134,19 @@ export default class Controls {
                     moveRight = false;
                     break;
                 case 'Space':
-                    moveUp = false;
+                    if (flyControlsEnabled){
+                        moveUp = false;
+                    }
                     break;
                 case 'ShiftLeft':
-                    moveDown = false;
+                    if (flyControlsEnabled) {
+                        moveDown = false;
+                    } 
                     break;
             }
         });
+
+        
 
 
     }
@@ -126,7 +154,9 @@ export default class Controls {
     update (deltaTime) {
         if (this.controls.isLocked) {
             velocity.x -= velocity.x * damperFactor * deltaTime;
-            velocity.y -= velocity.y * damperFactor * deltaTime;
+            if (flyControlsEnabled) {
+                velocity.y -= velocity.y * damperFactor * deltaTime;
+            }
             velocity.z -= velocity.z * damperFactor * deltaTime;
             direction.z = Number(moveForward) - Number(moveBackward);
             direction.x = Number(moveRight) - Number(moveLeft);
@@ -166,7 +196,15 @@ export default class Controls {
                 }
             }
 
+            if (flyControlsEnabled) {
+                if (moveUp || moveDown) {
+                    velocity.y += direction.y * movementSpeed * deltaTime;
+                }
+            }
+
+
             this.checkGroundCollision();
+
 
 
             // Fly Controls
@@ -182,7 +220,8 @@ export default class Controls {
 
             this.controls.moveRight(-velocity.x * deltaTime);
             this.controls.moveForward(-velocity.z * deltaTime);
-            this.controls.getObject().position.y -= velocity.y * deltaTime;
+            this.controls.getObject().position.y += velocity.y * deltaTime;
+
         }
     }
 
@@ -200,18 +239,31 @@ export default class Controls {
         groundRaycaster.ray.origin.copy(this.controls.getObject().position);
         groundRaycaster.ray.origin.y += 1;
         const gIntersections = groundRaycaster.intersectObjects(this.collidables);
+        this.arrowHelper(groundRaycaster);
+
+        if (isJumping) {
+            const timeElapsed = (performance.now() - jumpStartTime) / 1000;
+            velocity.y = jumpSpeed - gravity * timeElapsed;
+            if (velocity.y > 0) {
+                return;
+            }
+        }
+
         if (gIntersections.length > 0) {
             const distanceToGround = gIntersections[0].distance;
+            isJumping = false;
+            velocity.y = 0;
 
-            if (distanceToGround < playerHeight) {
+            const tolerance = 0.01;
+            if (distanceToGround < playerHeight - tolerance) {
                 this.controls.getObject().position.y -= distanceToGround - playerHeight;
             }
-            else if (distanceToGround > playerHeight) {
+            else if (distanceToGround > playerHeight + tolerance) {
                 this.controls.getObject().position.y += playerHeight - distanceToGround;
             }
         }
-        else {
-            this.controls.getObject().position.y -= gravity;
+        else if(!isJumping && !flyControlsEnabled){
+            velocity.y -= gravity * 0.1;
         }
     }
 
